@@ -5,6 +5,11 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
+
+uint64 getFreeMemory();
+uint64 getNumberProcesses();
+uint64 getAllNumberProcesses();
 
 uint64
 sys_exit(void)
@@ -89,3 +94,40 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64 sys_trace(void)
+{
+//mask
+  int n;
+  argint(0, &n);
+//printf("this is sys_trace, mask is %d\n", n);
+
+//input mask to process
+  struct proc *p = myproc();
+  p->trace_mask = n;
+
+  return 0;
+}
+
+uint64 sys_sysinfo(void)
+{
+  struct sysinfo info;
+  uint64 st;
+  struct proc *p = myproc();
+
+  info.nproc = getNumberProcesses();
+  info.freemem = getFreeMemory();//pages num, not size
+  info.allproc = getAllNumberProcesses();
+  
+  argaddr(0, &st);
+
+  if(copyout(p->pagetable, st, (char*)&info, sizeof(info)) < 0)
+  {
+    return -1;
+  }
+
+  printf("proc num is %d\nfree pages is %d and size is %d\nall proc is %d, arve is %d\%\n", info.nproc, info.freemem, (info.freemem)*4096, info.allproc, (info.nproc * 100 / info.allproc));
+  
+  return 0;
+}
+

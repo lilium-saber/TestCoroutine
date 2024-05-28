@@ -192,6 +192,9 @@ UPROGS=\
 	$U/_pingpong\
 	$U/_find\
 	$U/_uptime\
+	$U/_xargs\
+	$U/_trace\
+	$U/_sysinfotest\
 
 
 
