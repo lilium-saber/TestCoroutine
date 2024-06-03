@@ -108,4 +108,7 @@ struct proc {
 
   //for trace mask
   int trace_mask;
+
+  //
+  pagetable_t kernel_pagetable_t;//kernel pagetable
 };
