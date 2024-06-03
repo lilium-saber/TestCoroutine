@@ -45,14 +45,14 @@
 // for use by the kernel and user pages
 // from physical address 0x80000000 to PHYSTOP.
 #define KERNBASE 0x80000000L
-#define PHYSTOP (KERNBASE + 128*1024*1024)
+#define PHYSTOP (KERNBASE + 128*1024*1024)//phy_memory max_limit
 
 // map the trampoline page to the highest address,
-// in both user and kernel space.
+// in both user and kernel space. for translate user and kernel
 #define TRAMPOLINE (MAXVA - PGSIZE)
 
 // map kernel stacks beneath the trampoline,
-// each surrounded by invalid guard pages.
+// each surrounded by invalid guard pages. kernel_stack
 #define KSTACK(p) (TRAMPOLINE - ((p)+1)* 2*PGSIZE)
 
 // User memory layout.
@@ -65,3 +65,6 @@
 //   TRAPFRAME (p->trapframe, used by the trampoline)
 //   TRAMPOLINE (the same page as in the kernel)
 #define TRAPFRAME (TRAMPOLINE - PGSIZE)
+
+//super page
+#define SPPTSIZE (512 * PGSIZE)

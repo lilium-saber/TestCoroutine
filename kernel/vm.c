@@ -21,10 +21,11 @@ kvmmake(void)
 {
   pagetable_t kpgtbl;
 
-  kpgtbl = (pagetable_t) kalloc();
-  memset(kpgtbl, 0, PGSIZE);
+  kpgtbl = (pagetable_t) kalloc();//alloc a new phy_page to save pgtable
+  memset(kpgtbl, 0, PGSIZE);//set 0
 
   // uart registers
+  //page_table, vir_addr, phy_addr, size, can_do_read_and_write
   kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
 
   // virtio mmio disk interface
@@ -34,6 +35,7 @@ kvmmake(void)
   kvmmap(kpgtbl, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
 
   // map kernel text executable and read-only.
+  //can_do_read_and_work
   kvmmap(kpgtbl, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
 
   // map kernel data and the physical RAM we'll make use of.
@@ -83,7 +85,7 @@ kvminithart()
 //   12..20 -- 9 bits of level-0 index.
 //    0..11 -- 12 bits of byte offset within the page.
 pte_t *
-walk(pagetable_t pagetable, uint64 va, int alloc)
+walk(pagetable_t pagetable, uint64 va, int alloc)//find or create pte
 {
   if(va >= MAXVA)
     panic("walk");
@@ -91,7 +93,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
     if(*pte & PTE_V) {
-      pagetable = (pagetable_t)PTE2PA(*pte);
+      pagetable = (pagetable_t)PTE2PA(*pte);//CONTINUE
     } else {
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
@@ -106,7 +108,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 // or 0 if not mapped.
 // Can only be used to look up user pages.
 uint64
-walkaddr(pagetable_t pagetable, uint64 va)
+walkaddr(pagetable_t pagetable, uint64 va)//kvmpa
 {
   pte_t *pte;
   uint64 pa;
@@ -140,7 +142,7 @@ kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 // be page-aligned. Returns 0 on success, -1 if walk() couldn't
 // allocate a needed page-table page.
 int
-mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)//建立虚拟->物理的映射
 {
   uint64 a, last;
   pte_t *pte;
@@ -155,6 +157,19 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
       return -1;
     if(*pte & PTE_V)
       panic("mappages: remap");
+    /*
+    if(a + PTSIZE <= last + 1 && pa % PTSIZE == 0 && a % PTSIZE == 0){
+      // 如果虚拟地址和物理地址都对齐到PTSIZE，且映射的大小至少为PTSIZE，
+      // 则设置为超级页。
+      *pte = PA2PTE(pa) | PTE_V | PTE_R | PTE_W | PTE_X | PTE_U;
+      a += PTSIZE;
+      pa += PTSIZE;
+    } else {
+      *pte = PA2PTE(pa) | PTE_V | perm;
+      a += PGSIZE;
+      pa += PGSIZE;
+    }
+    */
     *pte = PA2PTE(pa) | perm | PTE_V;
     if(a == last)
       break;
@@ -437,3 +452,80 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+void vmprint(pagetable_t pagetable, int deep)//deep_start_from 1
+{
+  for(int i = 0; i < 512; i++)//512PTE
+  {
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0)
+    {
+    // this PTE points to a lower-level page table.
+      for(int x = 0; x < deep ;x++)
+      {
+        printf(".. ");
+      }
+      uint64 child = PTE2PA(pte);
+      printf("%d: PTE %p point_to %p\n", i, pte, child);
+      vmprint((pagetable_t)child, deep + 1);
+    } else if(pte & PTE_V)
+    {
+      uint64 child = PTE2PA(pte);
+      printf(".. .. .. %d: PTE %p point_to %p\n", i, pte, child);
+    }
+  }
+  return;
+}
+
+void proc_kinitstart(pagetable_t k_pagetable)
+{
+  w_satp(MAKE_SATP(k_pagetable));
+
+  // flush stale entries from the TLB.
+  sfence_vma();
+}
+
+void uvmmap(pagetable_t paget_able, uint64 va, uint64 pa, uint64 sz, int perm)
+{
+  if(mappages(paget_able, va, sz, pa, perm) != 0)
+    panic("uvmmap");
+}
+
+pagetable_t proc_kernel_pagetable_init()
+{
+  /*
+  kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+
+  // virtio mmio disk interface
+  kvmmap(kpgtbl, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+
+  // PLIC
+  kvmmap(kpgtbl, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+
+  // map kernel text executable and read-only.
+  //can_do_read_and_work
+  kvmmap(kpgtbl, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+
+  // map kernel data and the physical RAM we'll make use of.
+  kvmmap(kpgtbl, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+
+  // map the trampoline for trap entry/exit to
+  // the highest virtual address in the kernel.
+  kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+
+  // allocate and map a kernel stack for each process.
+  proc_mapstacks(kpgtbl);
+  */
+  pagetable_t kernel_pagetable_p = uvmcreate();
+  if(kernel_pagetable_p == 0)
+    return 0;
+  uvmmap(kernel_pagetable_p, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+  uvmmap(kernel_pagetable_p, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+  uvmmap(kernel_pagetable_p, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  uvmmap(kernel_pagetable_p, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+  uvmmap(kernel_pagetable_p, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+  uvmmap(kernel_pagetable_p, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+  uvmmap(kernel_pagetable_p, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+  return kernel_pagetable_p;
+}
+
