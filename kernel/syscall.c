@@ -66,6 +66,29 @@ void
 argaddr(int n, uint64 *ip)
 {
   *ip = argraw(n);
+  struct proc *p = myproc();
+
+  if(walkaddr(p->pagetable, *ip) == 0)
+  {
+    if(PGROUNDUP(p->trapframe->sp) - 1 < *ip && *ip < p->sz)
+    {
+      char *pa = kalloc();
+    if(pa == 0)
+    {
+      return;
+    }
+    memset(pa, 0, PGSIZE);
+
+    if(mappages(p->pagetable, PGROUNDDOWN(*ip), PGSIZE, (uint64)pa, PTE_R | PTE_W | PTE_X | PTE_U) != 0) {
+        kfree(pa);
+        return;
+      }
+    }
+    else
+    {
+      return;
+    } 
+  }
 }
 
 // Fetch the nth word-sized system call argument as a null-terminated string.

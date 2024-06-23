@@ -43,8 +43,24 @@ sys_sbrk(void)
 
   argint(0, &n);
   addr = myproc()->sz;
+  //
+  if(n > 0)
+  {
+    myproc()->sz = myproc()->sz + n;
+  }
+  else if(myproc()->sz + n > 0)
+  {
+    myproc()->sz = uvmdealloc(myproc()->pagetable, myproc()->sz, myproc()->sz + n);
+  }
+  else
+  {
+    return -1;
+  }
+  
+  /*
   if(growproc(n) < 0)
     return -1;
+  */
   return addr;
 }
 
