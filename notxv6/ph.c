@@ -12,10 +12,12 @@ struct entry {
   int key;
   int value;
   struct entry *next;
-};
-struct entry *table[NBUCKET];
+};//使用链表保存k-v
+struct entry *table[NBUCKET];//保存头节点
 int keys[NKEYS];
 int nthread = 1;
+
+pthread_mutex_t ph_lock[NBUCKET];
 
 
 double
@@ -47,13 +49,20 @@ void put(int key, int value)
     if (e->key == key)
       break;
   }
+
+  
   if(e){
     // update the existing key.
     e->value = value;
   } else {
     // the new is new.
+    pthread_mutex_lock(&ph_lock[i]);
+
     insert(key, value, &table[i], table[i]);
+    
+    pthread_mutex_unlock(&ph_lock[i]);
   }
+  
 
 }
 
@@ -78,6 +87,7 @@ put_thread(void *xa)
   int b = NKEYS/nthread;
 
   for (int i = 0; i < b; i++) {
+    //
     put(keys[b*n + i], n);
   }
 
@@ -105,7 +115,11 @@ main(int argc, char *argv[])
   void *value;
   double t1, t0;
 
-
+  for(int i = 0; i < NBUCKET; i++)
+  {
+    pthread_mutex_init(&ph_lock[i], NULL);
+  }
+  
   if (argc < 2) {
     fprintf(stderr, "Usage: %s nthreads\n", argv[0]);
     exit(-1);
